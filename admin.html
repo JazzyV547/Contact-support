@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Conversations</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="admin-page">
+    <header class="admin-header">
+      <div>
+        <h1>Conversations</h1>
+        <div class="sub" id="subCount">Support inbox</div>
+      </div>
+      <button class="ghost-btn" id="logoutBtn" type="button">Log out</button>
+    </header>
+
+    <div class="admin-toolbar">
+      <div class="search-box">
+        <input id="search" type="text" placeholder="Search by name, email or WhatsApp" />
+      </div>
+      <div class="filter-tabs" id="filterTabs"></div>
+    </div>
+
+    <ul class="user-list" id="userList"></ul>
+    <div class="empty-state" id="empty" style="display:none;">No conversations yet</div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+<script src="js/app.js"></script>
+  <script>
+    requireAuth(true);
+
+    document.getElementById('logoutBtn').addEventListener('click', function () {
+      Store.clearSession();
+      location.href = 'index.html';
+    });
+
+    let activeSite = 'all';
+    let query = '';
+    let loading = false;
+
+    document.getElementById('search').addEventListener('input', function (e) {
+      query = e.target.value.trim().toLowerCase();
+      load();
+    });
+
+    function siteLabel(u) {
+      return u.siteName || (u.site ? slugToName(u.site) : 'Unassigned');
+    }
+
+    function renderFilterTabs(users) {
+      const tabsEl = document.getElementById('filterTabs');
+      const bySite = {};
+      users.forEach(function (u) {
+        const slug = u.site || 'unassigned';
+        if (!bySite[slug]) bySite[slug] = { slug: slug, name: siteLabel(u), count: 0 };
+        bySite[slug].count++;
+      });
+      const sites = Object.values(bySite).sort(function (a, b) { return b.count - a.count; });
+
+      tabsEl.innerHTML = '';
+
+      const allTab = document.createElement('button');
+      allTab.type = 'button';
+      allTab.className = 'filter-tab' + (activeSite === 'all' ? ' active' : '');
+      allTab.textContent = 'All (' + users.length + ')';
+      allTab.addEventListener('click', function () { activeSite = 'all'; load(); });
+      tabsEl.appendChild(allTab);
+
+      sites.forEach(function (s) {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'filter-tab' + (activeSite === s.slug ? ' active' : '');
+
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = s.slug === 'unassigned' ? 'var(--muted-2)' : siteColor(s.slug);
+        tab.appendChild(dot);
+
+        const label = document.createElement('span');
+        label.textContent = s.name + ' (' + s.count + ')';
+        tab.appendChild(label);
+
+        tab.addEventListener('click', function () { activeSite = s.slug; load(); });
+        tabsEl.appendChild(tab);
+      });
+    }
+
+    async function buildRows(users) {
+      const rows = [];
+      for (let i = 0; i < users.length; i++) {
+        const u = users[i];
+        const threads = await Store.getUserThreads(u.id);
+        const links = Object.keys(threads);
+        if (!links.length) {
+          rows.push({ u: u, link: u.site || 'unassigned', msgs: [], last: null });
+        } else {
+          links.forEach(function (link) {
+            const msgs = threads[link];
+            rows.push({ u: u, link: link, msgs: msgs, last: msgs[msgs.length - 1] || null });
+          });
+        }
+      }
+      // Resolve unread state for every row up front, in parallel —
+      // this is the last network round-trip before we touch the DOM.
+      await Promise.all(rows.map(async function (row) {
+        row.unread = await hasUnread(row.u.id, row.link);
+      }));
+      rows.sort(function (a, b) { return (b.last ? b.last.ts : 0) - (a.last ? a.last.ts : 0); });
+      return rows;
+    }
+
+    function buildRowEl(row) {
+      const u = row.u;
+      const last = row.last;
+      const slug = u.site || 'unassigned';
+      const color = slug === 'unassigned' ? 'var(--muted-2)' : siteColor(slug);
+
+      const li = document.createElement('li');
+      li.className = 'user-item' + (row.unread ? ' unread' : '');
+      li.addEventListener('click', function () {
+        location.href = 'admin-chat.html?user=' + encodeURIComponent(u.id) +
+          '&link=' + encodeURIComponent(row.link);
+      });
+
+      const av = document.createElement('div');
+      av.className = 'avatar green';
+      av.style.background = color;
+      av.textContent = initials(u.name);
+
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+
+      const nameRow = document.createElement('div');
+      nameRow.className = 'name-row';
+
+      const name = document.createElement('div');
+      name.className = 'name';
+      name.textContent = u.name;
+      nameRow.appendChild(name);
+
+      if (activeSite === 'all') {
+        const pill = document.createElement('span');
+        pill.className = 'site-pill';
+        const pillDot = document.createElement('span');
+        pillDot.className = 'dot';
+        pillDot.style.background = color;
+        pill.appendChild(pillDot);
+        pill.appendChild(document.createTextNode(siteLabel(u)));
+        nameRow.appendChild(pill);
+      }
+
+      meta.appendChild(nameRow);
+
+      if (row.link && row.link !== slug) {
+        const channel = document.createElement('div');
+        channel.className = 'channel-label';
+        channel.textContent = siteDisplayName(row.link);
+        meta.appendChild(channel);
+      }
+
+      const preview = document.createElement('div');
+      preview.className = 'preview';
+      preview.textContent = last ? last.body : 'No messages yet';
+      meta.appendChild(preview);
+
+      const right = document.createElement('div');
+      right.className = 'right';
+
+      if (row.unread) {
+        const badge = document.createElement('div');
+        badge.className = 'unread-badge';
+        badge.textContent = '•';
+        right.appendChild(badge);
+      }
+      const time = document.createElement('span');
+      time.textContent = last ? formatRelativeDay(last.ts) : '';
+      right.appendChild(time);
+
+      li.appendChild(av);
+      li.appendChild(meta);
+      li.appendChild(right);
+      return li;
+    }
+
+    // A cheap fingerprint of what's currently shown, so a poll that
+    // found nothing new never touches the DOM at all — the single
+    // biggest source of any visible flicker.
+    let lastSignature = null;
+
+    function signatureFor(rows) {
+      return rows.map(function (r) {
+        return r.u.id + ':' + r.link + ':' + (r.last ? r.last.id : '0') + ':' + (r.unread ? '1' : '0');
+      }).join('|') + '::' + activeSite + '::' + query;
+    }
+
+    async function load() {
+      if (loading) return;
+      loading = true;
+
+      try {
+        const allUsers = (await Store.getUsers()).filter(function (u) { return !u.isAdmin; });
+        renderFilterTabs(allUsers);
+
+        let users = allUsers;
+        if (activeSite !== 'all') {
+          users = users.filter(function (u) { return (u.site || 'unassigned') === activeSite; });
+        }
+        if (query) {
+          users = users.filter(function (u) {
+            return String(u.name).toLowerCase().includes(query) ||
+                   String(u.email || '').toLowerCase().includes(query) ||
+                   String(u.whatsapp || '').toLowerCase().includes(query);
+          });
+        }
+
+        // Everything async (fetching threads + unread state) happens
+        // here, BEFORE any DOM is touched. The visible list stays
+        // exactly as it was — no flash of empty — while this awaits.
+        const rows = await buildRows(users);
+
+        const signature = signatureFor(rows);
+        if (signature === lastSignature) return; // nothing changed — skip the render entirely
+        lastSignature = signature;
+
+        const unreadCount = rows.filter(function (r) { return r.unread; }).length;
+        document.getElementById('subCount').textContent =
+          rows.length + ' conversation' + (rows.length === 1 ? '' : 's') +
+          (unreadCount ? ' · ' + unreadCount + ' unread' : '');
+
+        const list = document.getElementById('userList');
+        const empty = document.getElementById('empty');
+
+        if (!rows.length) {
+          list.innerHTML = '';
+          empty.style.display = 'block';
+          empty.textContent = query || activeSite !== 'all' ? 'No matching conversations' : 'No conversations yet';
+          return;
+        }
+
+        // Build the whole new list in memory first...
+        const frag = document.createDocumentFragment();
+        rows.forEach(function (row) { frag.appendChild(buildRowEl(row)); });
+
+        // ...then swap it in as one synchronous operation. There is
+        // no async work between clearing and appending, so nothing
+        // is ever visibly empty.
+        empty.style.display = 'none';
+        list.innerHTML = '';
+        list.appendChild(frag);
+      } catch (ex) {
+        console.error(ex);
+      } finally {
+        loading = false;
+      }
+    }
+
+    load();
+    setInterval(load, 3000);
+  </script>
+</body>
+</html>
