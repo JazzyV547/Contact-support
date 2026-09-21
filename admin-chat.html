@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Admin Chat</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>.msg { animation: none !important; }</style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <button class="icon-btn" id="backBtn" type="button" aria-label="Back">←</button>
+      <div class="avatar" id="avatar">?</div>
+      <div class="meta">
+        <h2 id="userName">User</h2>
+        <p id="userSub"></p>
+      </div>
+      <div class="status-dot"></div>
+    </header>
+
+    <div class="contact-card" id="contactCard"></div>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Write a reply…"></textarea>
+        <button class="send-btn" id="sendBtn" type="button" disabled aria-label="Send">➤</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+<script src="js/app.js"></script>
+  <script>
+    (async function () {
+      const session = requireAuth(true);
+      if (!session) return;
+
+      const params = new URLSearchParams(location.search);
+      const userId = params.get('user');
+      const users = await Store.getUsers();
+      const user = users.find(function (u) { return u.id === userId; });
+
+      if (!user) {
+        location.href = 'admin.html';
+        return;
+      }
+
+      const slug = user.site || 'unassigned';
+      const siteName = user.siteName || (user.site ? slugToName(user.site) : 'Unassigned');
+      const color = slug === 'unassigned' ? 'var(--muted-2)' : siteColor(slug);
+      const linkSlug = params.get('link') || user.site || 'unassigned';
+      const channelName = linkSlug !== slug ? siteDisplayName(linkSlug) : null;
+
+      document.getElementById('userName').textContent = user.name;
+      document.getElementById('userSub').textContent = channelName
+        ? siteName + ' · ' + channelName
+        : siteName;
+
+      const avatarEl = document.getElementById('avatar');
+      avatarEl.textContent = initials(user.name);
+      avatarEl.style.background = color;
+      document.title = user.name + ' @ ' + siteName + ' — Admin';
+
+      (function buildContactCard() {
+        const card = document.getElementById('contactCard');
+        card.innerHTML = '';
+
+        function addRow(label, value, opts) {
+          if (!value) return;
+          const row = document.createElement('div');
+          row.className = 'contact-row';
+
+          const field = document.createElement('div');
+          field.className = 'field';
+          const k = document.createElement('div');
+          k.className = 'k';
+          k.textContent = label;
+          const v = document.createElement('div');
+          v.className = 'v';
+          v.textContent = value;
+          field.appendChild(k);
+          field.appendChild(v);
+
+          const actions = document.createElement('div');
+          actions.className = 'actions';
+
+          const copyBtn = document.createElement('button');
+          copyBtn.type = 'button';
+          copyBtn.className = 'chip-btn';
+          copyBtn.textContent = 'Copy';
+          copyBtn.addEventListener('click', async function () {
+            const ok = await copyToClipboard(value);
+            if (ok) {
+              copyBtn.textContent = 'Copied';
+              copyBtn.classList.add('copied');
+              setTimeout(function () {
+                copyBtn.textContent = 'Copy';
+                copyBtn.classList.remove('copied');
+              }, 1400);
+            }
+          });
+          actions.appendChild(copyBtn);
+
+          if (opts && opts.href) {
+            const link = document.createElement('a');
+            link.className = 'chip-btn';
+            link.href = opts.href;
+            link.textContent = opts.linkLabel || 'Open';
+            link.target = '_blank';
+            link.rel = 'noopener';
+            actions.appendChild(link);
+          }
+
+          row.appendChild(field);
+          row.appendChild(actions);
+          card.appendChild(row);
+        }
+
+        addRow('Email', user.email, {
+          href: user.email ? ('mailto:' + user.email) : null,
+          linkLabel: 'Email'
+        });
+
+        addRow('WhatsApp', user.whatsapp, {
+          href: user.whatsapp ? ('https://wa.me/' + normalizePhone(user.whatsapp).replace('+', '')) : null,
+          linkLabel: 'WhatsApp'
+        });
+
+        if (!card.children.length) card.style.display = 'none';
+      })();
+
+      await Store.markRead(userId, linkSlug);
+
+      document.getElementById('backBtn').addEventListener('click', function () {
+        location.href = 'admin.html';
+      });
+
+      const box = document.getElementById('messages');
+      const input = document.getElementById('input');
+      const sendBtn = document.getElementById('sendBtn');
+
+      let lastCount = -1;
+      let lastId = null;
+
+      async function render(force) {
+        const msgs = await Store.getMessages(userId, linkSlug);
+        const count = msgs.length;
+        const latestId = count ? msgs[count - 1].id : null;
+
+        if (!force && count === lastCount && latestId === lastId) return;
+        lastCount = count;
+        lastId = latestId;
+        await Store.markRead(userId, linkSlug);
+
+        const wasNearBottom =
+          box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+
+        box.innerHTML = '';
+
+        if (!msgs.length) {
+          const hint = document.createElement('div');
+          hint.className = 'empty-hint';
+          hint.textContent = 'No messages yet. Start the conversation.';
+          box.appendChild(hint);
+          return;
+        }
+
+        let lastDay = null;
+        const grouping = messageGrouping(msgs);
+        msgs.forEach(function (m, idx) {
+          const day = new Date(m.ts).toDateString();
+          if (day !== lastDay) {
+            const div = document.createElement('div');
+            div.className = 'day-divider';
+            div.textContent = formatRelativeDay(m.ts) === formatTime(m.ts) ? 'Today' : formatRelativeDay(m.ts);
+            box.appendChild(div);
+            lastDay = day;
+          }
+          box.appendChild(createBubble(m.body, formatTime(m.ts), m.senderId === session.id, grouping[idx]));
+        });
+
+        if (force || wasNearBottom) {
+          box.scrollTop = box.scrollHeight;
+        }
+      }
+
+      async function send() {
+        const body = (input.value || '').trim();
+        if (!body) return;
+
+        sendBtn.disabled = true;
+        await Store.saveMessage(userId, linkSlug, {
+          id: Date.now(),
+          senderId: session.id,
+          receiverId: userId,
+          body: body,
+          ts: Date.now()
+        });
+
+        input.value = '';
+        input.style.height = 'auto';
+        await render(true);
+      }
+
+      input.addEventListener('input', function () {
+        sendBtn.disabled = !(input.value || '').trim();
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      });
+
+      sendBtn.addEventListener('click', send);
+
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+
+      await render(true);
+      setInterval(function () { render(false); }, 2500);
+    })();
+  </script>
+</body>
+</html>
