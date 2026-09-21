@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Chat</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <style>.msg { animation: none !important; }</style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <button class="icon-btn" id="logoutBtn" type="button" aria-label="Log out">←</button>
+      <div class="avatar" id="avatar">S</div>
+      <div class="meta">
+        <h2 id="chatTitle">Support</h2>
+        <p>Typically replies within a few hours</p>
+      </div>
+      <div class="status-dot"></div>
+    </header>
+
+    <div class="messages" id="messages"></div>
+
+    <div class="composer">
+      <div class="composer-box">
+        <textarea id="input" rows="1" placeholder="Write a message…"></textarea>
+        <button class="send-btn" id="sendBtn" type="button" disabled aria-label="Send">➤</button>
+      </div>
+    </div>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+<script src="js/app.js"></script>
+  <script>
+    const session = requireAuth(false);
+    if (session) {
+      applyBrandTheme();
+      const brand = getBrand();
+      document.getElementById('chatTitle').textContent = brand;
+      document.getElementById('avatar').textContent = brand.charAt(0).toUpperCase();
+      document.title = brand;
+
+      const linkSlug = getLinkSlug();
+      const ADMIN_ID = 'admin-001';
+      const box = document.getElementById('messages');
+      const input = document.getElementById('input');
+      const sendBtn = document.getElementById('sendBtn');
+
+      let lastCount = -1;
+      let lastId = null;
+
+      async function render(force) {
+        const msgs = await Store.getMessages(session.id, linkSlug);
+        const count = msgs.length;
+        const latestId = count ? msgs[count - 1].id : null;
+
+        if (!force && count === lastCount && latestId === lastId) return;
+        lastCount = count;
+        lastId = latestId;
+
+        const wasNearBottom =
+          box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+
+        box.innerHTML = '';
+
+        if (!msgs.length) {
+          const hint = document.createElement('div');
+          hint.className = 'empty-hint';
+          hint.textContent = 'Start the conversation with ' + brand + '.';
+          box.appendChild(hint);
+          return;
+        }
+
+        let lastDay = null;
+        const grouping = messageGrouping(msgs);
+        msgs.forEach(function (m, idx) {
+          const day = new Date(m.ts).toDateString();
+          if (day !== lastDay) {
+            const div = document.createElement('div');
+            div.className = 'day-divider';
+            div.textContent = formatRelativeDay(m.ts) === formatTime(m.ts) ? 'Today' : formatRelativeDay(m.ts);
+            box.appendChild(div);
+            lastDay = day;
+          }
+          box.appendChild(createBubble(m.body, formatTime(m.ts), m.senderId === session.id, grouping[idx]));
+        });
+
+        if (force || wasNearBottom) {
+          box.scrollTop = box.scrollHeight;
+        }
+      }
+
+      async function send() {
+        const body = (input.value || '').trim();
+        if (!body) return;
+
+        sendBtn.disabled = true;
+        await Store.saveMessage(session.id, linkSlug, {
+          id: Date.now(),
+          senderId: session.id,
+          receiverId: ADMIN_ID,
+          body: body,
+          ts: Date.now()
+        });
+
+        input.value = '';
+        input.style.height = 'auto';
+        await render(true);
+      }
+
+      input.addEventListener('input', function () {
+        sendBtn.disabled = !(input.value || '').trim();
+        input.style.height = 'auto';
+        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+      });
+
+      sendBtn.addEventListener('click', send);
+
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+
+      document.getElementById('logoutBtn').addEventListener('click', function () {
+        Store.clearSession();
+        location.href = 'index.html?site=' + encodeURIComponent(getSiteSlug()) +
+          '&link=' + encodeURIComponent(getLinkSlug());
+      });
+
+      render(true);
+      setInterval(function () { render(false); }, 2500);
+    }
+  </script>
+</body>
+</html>
