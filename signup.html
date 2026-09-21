@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Sign Up</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-shell">
+      <div class="auth-visual">
+        <span class="tag">Workspace online</span>
+        <h2>Every conversation, kept in one place.</h2>
+        <p>Create an account so our team can reach you wherever's easiest — email or WhatsApp.</p>
+        <div class="stat-row">
+          <div class="stat"><b>24/7</b><span>Coverage</span></div>
+          <div class="stat"><b>&lt;2m</b><span>Avg. response</span></div>
+          <div class="stat"><b>100%</b><span>Encrypted</span></div>
+        </div>
+      </div>
+
+      <div class="auth-card">
+        <div class="brand-badge">
+          <div class="logo-mark" id="brandInitial">S</div>
+          <h1 id="brandName">Support</h1>
+          <p>Create your support account</p>
+        </div>
+
+        <div class="error-msg" id="error"></div>
+
+        <form id="signupForm">
+          <div class="form-group">
+            <label for="name">Full name</label>
+            <input id="name" type="text" required placeholder="Your full name" />
+          </div>
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input id="email" type="email" required placeholder="you@email.com" autocomplete="email" />
+            <div class="field-hint" id="emailHint"></div>
+          </div>
+          <div class="form-group">
+            <label for="whatsapp">WhatsApp number</label>
+            <input id="whatsapp" type="tel" required placeholder="+1 555 123 4567" autocomplete="tel" />
+          </div>
+          <button class="btn btn-primary" type="submit">Create account</button>
+        </form>
+
+        <div class="auth-footer">
+          Already registered? <a id="loginLink" href="index.html">Sign in</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    applyBrandTheme();
+    const brand = getBrand();
+    const siteSlug = getSiteSlug();
+    const linkSlug = getLinkSlug();
+    document.getElementById('brandName').textContent = brand;
+    document.getElementById('brandInitial').textContent = brand.charAt(0).toUpperCase();
+    document.title = brand + ' — Sign Up';
+    document.getElementById('loginLink').href =
+      'index.html?site=' + encodeURIComponent(siteSlug) + '&link=' + encodeURIComponent(linkSlug);
+
+    const session = Store.getSession();
+    if (session) {
+      if (session.isAdmin || session.site === siteSlug) {
+        location.href = session.isAdmin ? 'admin.html' : 'chat.html';
+      } else {
+        Store.clearSession();
+      }
+    }
+
+    const err = document.getElementById('error');
+    const form = document.getElementById('signupForm');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const nameInput = document.getElementById('name');
+    const emailInput = document.getElementById('email');
+    const emailHint = document.getElementById('emailHint');
+    const whatsappInput = document.getElementById('whatsapp');
+
+    function looksLikeEmail(value) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    }
+
+    function validateEmailField() {
+      const value = emailInput.value.trim();
+      if (!value) {
+        emailInput.classList.remove('invalid');
+        emailHint.textContent = '';
+        emailHint.classList.remove('error');
+        return true;
+      }
+      if (looksLikeEmail(value)) {
+        emailInput.classList.remove('invalid');
+        emailHint.textContent = '';
+        emailHint.classList.remove('error');
+        return true;
+      }
+      emailInput.classList.add('invalid');
+      emailHint.textContent = 'Enter a valid email address, like name@example.com.';
+      emailHint.classList.add('error');
+      return false;
+    }
+
+    emailInput.addEventListener('input', validateEmailField);
+
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      err.classList.remove('show');
+
+      const name = nameInput.value.trim();
+      const email = emailInput.value.trim();
+      const whatsapp = whatsappInput.value.trim();
+
+      if (!validateEmailField()) {
+        emailInput.focus();
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account…';
+
+      try {
+        const emailKey = email.toLowerCase();
+        const whatsappKey = normalizePhone(whatsapp);
+        const users = await Store.getUsers();
+
+        const exists = users.some(function (u) {
+          if (u.site !== siteSlug) return false;
+          const uEmail = String(u.email || '').toLowerCase();
+          const uWhatsapp = normalizePhone(u.whatsapp);
+          return (emailKey && uEmail === emailKey) ||
+                 (whatsappKey && uWhatsapp === whatsappKey);
+        });
+
+        if (exists) {
+          err.textContent = 'An account with this email or WhatsApp number already exists for ' + brand + '. Try signing in instead.';
+          err.classList.add('show');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create account';
+          return;
+        }
+
+        const user = {
+          id: 'user-' + Date.now(),
+          name: name,
+          email: email,
+          whatsapp: whatsapp,
+          isAdmin: false,
+          site: siteSlug,
+          siteName: siteDisplayName(siteSlug)
+        };
+
+        await upsertProfile(user);
+
+        Store.setSession({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          whatsapp: user.whatsapp,
+          isAdmin: false,
+          site: user.site,
+          siteName: user.siteName
+        });
+        location.href = 'chat.html';
+      } catch (ex) {
+        console.error(ex);
+        err.textContent = 'Something went wrong. Please try again.';
+        err.classList.add('show');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create account';
+      }
+    });
+  </script>
+</body>
+</html>
