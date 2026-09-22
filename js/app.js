@@ -210,29 +210,70 @@ function siteColor(slug) {
   return 'hsl(' + hue + ', 72%, 64%)';
 }
 
+// The raw `site`/`brand` URL param only — null if this page load
+// didn't carry one.
 function explicitSiteParam() {
   const params = new URLSearchParams(window.location.search);
   return params.get('site') || params.get('brand') || null;
 }
 
+// Pulls a short label out of document.referrer — e.g. "ourgroup"
+// from "https://ourgroup.com/contact" or "https://www.ourgroup.co.uk/".
+// Only returns something when the referrer is a DIFFERENT origin than
+// this app itself: navigating between this app's own pages (login →
+// signup → chat) must never be mistaken for a new embedding site.
+function getReferrerSlug() {
+  try {
+    if (!document.referrer) return null;
+    const ref = new URL(document.referrer);
+    if (ref.hostname === window.location.hostname) return null;
+    const host = ref.hostname.replace(/^www\./, '');
+    const label = host.split('.')[0];
+    return label ? label.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Whatever THIS specific page load's URL/referrer explicitly tells us
+// about the site — an explicit ?site= param, or (failing that) a
+// cross-origin referrer. Returns null when this load carries no such
+// signal at all, meaning "trust whatever's already active" instead.
+function contextSiteSlug() {
+  return explicitSiteParam() || getReferrerSlug();
+}
+
+// The website — the account boundary. A fresh signal (URL param or a
+// new external referrer) always wins, since it's the most current
+// truth about where this visit came from; only when neither is
+// present does this fall back to the existing session/localStorage,
+// so a bookmarked or reloaded page keeps working without one.
 function getSiteSlug() {
-  const params = new URLSearchParams(window.location.search);
-  const fromUrl = params.get('site') || params.get('brand');
-  if (fromUrl) {
-    localStorage.setItem('ss_last_site', fromUrl);
-    return fromUrl;
+  const context = contextSiteSlug();
+  if (context) {
+    localStorage.setItem('ss_last_site', context);
+    return context;
   }
   const session = Store.getSession();
   if (session && session.site) return session.site;
   return localStorage.getItem('ss_last_site') || 'support';
 }
 
+// The specific link (help / info / support / ...) — display only.
+// On a fresh site context (a param or a new referrer) with no link
+// override, the link IS that site — never a stale link left over
+// from browsing a different embedded site earlier in this browser.
 function getLinkSlug() {
   const params = new URLSearchParams(window.location.search);
   const fromUrl = params.get('link') || params.get('entry');
   if (fromUrl) {
     localStorage.setItem('ss_last_link', fromUrl);
     return fromUrl;
+  }
+  const context = contextSiteSlug();
+  if (context) {
+    localStorage.setItem('ss_last_link', context);
+    return context;
   }
   return localStorage.getItem('ss_last_link') || getSiteSlug();
 }
@@ -242,8 +283,26 @@ function siteDisplayName(slug) {
   return slugToName(slug);
 }
 
+// What's shown as the brand name/logo on screen.
+// - A distinct link (e.g. ?site=acme&link=help) shows that link's
+//   own name — "Help" — as before.
+// - No distinct link (the common case: a single "Contact Us" button,
+//   whether it's a bare embed picked up via referrer, or an explicit
+//   ?site=acme with no ?link=) shows "<site>@support" — so every
+//   website you embed this on reads as its own distinct handle
+//   without you ever having to edit the embed code.
+// - True bare default (no param, no referrer, nothing stored — e.g.
+//   opening the app directly) shows plain "Support".
 function getBrand() {
-  return siteDisplayName(getLinkSlug());
+  const site = getSiteSlug();
+  const link = getLinkSlug();
+  if (link !== site) {
+    return siteDisplayName(link);
+  }
+  if (site === 'support') {
+    return 'Support';
+  }
+  return site + '@support';
 }
 
 function applyBrandTheme() {}
@@ -258,8 +317,11 @@ function requireAuth(adminOnly) {
     return null;
   }
 
-  const explicitSite = explicitSiteParam();
-  if (!session.isAdmin && explicitSite && session.site !== explicitSite) {
+  // A fresh site signal (param or a new external referrer) that
+  // disagrees with the signed-in account's site means this visit
+  // belongs to a different website — that session doesn't apply here.
+  const context = contextSiteSlug();
+  if (!session.isAdmin && context && session.site !== context) {
     Store.clearSession();
     window.location.href = 'index.html' + window.location.search;
     return null;
