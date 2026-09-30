@@ -1,0 +1,226 @@
+/* Photo & video attachments — loaded AFTER style.css on chat.html and
+   admin-chat.html. style.css itself is untouched.
+
+   Composer is now ONE card (error / preview / input row stacked
+   inside .composer-box) instead of three separately-bordered boxes,
+   which is what was reading as "cluttered". */
+
+[hidden] { display: none !important; }
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px;
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.composer-row textarea { padding: 11px 6px; }
+
+/* ───────── Attach button — a plain "+" inside a visible outlined
+   circle (matching the reference screenshot), so it reads clearly
+   as a tappable control at rest, not just on hover. ───────── */
+.attach-btn {
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin: 2px 2px 2px 0;
+  transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.attach-btn:hover { background: rgba(255,255,255,0.07); color: var(--text); border-color: var(--muted); }
+.attach-btn:active { background: rgba(255,255,255,0.12); }
+.attach-btn:disabled { opacity: 0.4; cursor: default; }
+.attach-btn svg { width: 18px; height: 18px; }
+/* Two separate buttons (📷 photo, 🎥 video) sit side by side now
+   instead of one icon — size the emoji itself and tighten the gap
+   between the pair so they read as a matched set. */
+.attach-btn { font-size: 1.05rem; line-height: 1; }
+.composer-row { gap: 4px; }
+
+/* ───────── Error — plain text, no box, so it doesn't compete
+   visually with the actual message content. ───────── */
+.composer-error {
+  padding: 2px 8px 8px;
+  color: #ff9aa4;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+/* ───────── Attachment preview — a slim inline strip, separated
+   from the input row by a hairline rather than its own border/
+   background, so it reads as ONE composer, not a stack of cards. ───────── */
+.attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.attach-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.attach-info { min-width: 0; flex: 1; }
+
+.attach-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-meta { margin-top: 1px; font-size: 0.72rem; color: var(--muted-2); }
+
+.attach-remove {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.attach-remove:hover { background: var(--line-strong); color: var(--text); }
+
+.send-btn.busy { font-size: 0; }
+.send-btn.busy::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: media-spin .7s linear infinite;
+}
+.send-btn.busy:disabled { opacity: 0.8; }
+@keyframes media-spin { to { transform: rotate(360deg); } }
+
+/* ───────── Message bubbles with media ─────────
+   Width scales like a text bubble instead of a fixed 320px. Corners
+   are rounder and there's a soft shadow, closer to how native
+   messaging apps present a photo/video message. */
+.msg.has-media {
+  width: min(72vw, 300px);
+  max-width: min(78%, 300px);
+  padding: 5px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+}
+
+.msg-media {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  line-height: 0;
+}
+
+.msg-media video { cursor: pointer; }
+
+/* Centered play icon over a video thumbnail — the whole thumbnail is
+   clickable (see app.js), this is just the visual cue. */
+.media-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.media-play svg { width: 22px; height: 22px; margin-left: 2px; }
+
+.msg-media img,
+.msg-media video {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  object-fit: contain;
+  background: #000;
+}
+
+.msg-media img { cursor: zoom-in; min-height: 80px; }
+
+.msg-media.missing {
+  padding: 24px 12px;
+  background: var(--surface);
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.msg.has-media .msg-text { padding: 8px 8px 0; }
+.msg.has-media .time { padding: 0 8px 3px; }
+.msg.has-media .msg-media + .time { margin-top: 5px; }
+
+/* ───────── Photo viewer ───────── */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,0.92);
+  cursor: zoom-out;
+}
+
+.lightbox img,
+.lightbox video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+@media (max-width: 400px) {
+  .msg.has-media { width: min(80vw, 260px); }
+}
