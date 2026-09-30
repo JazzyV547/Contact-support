@@ -397,12 +397,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
 .chip-btn:hover { background: var(--line-strong); }
 .chip-btn.copied { color: var(--success); border-color: var(--success); }
 
-/* ───────── MESSAGES (bubbles, grouped by sender) ─────────
-   Default spacing separates one exchange/turn from the next. A
-   "grouped" bubble (same sender as the message right before it, on
-   the same day) sits much closer to its predecessor and drops its
-   timestamp unless it's the last one in the run — the whole point
-   is a multi-line reply reads as ONE block, not N separate blocks. */
+/* ───────── MESSAGES (bubbles, grouped by sender) ───────── */
 .messages {
   flex: 1;
   padding: 22px 16px 120px;
@@ -790,4 +785,234 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visib
   .msg { max-width: 86%; }
   .admin-header h1 { font-size: 1.16rem; }
   .auth-card { padding: 34px 22px; }
+}
+
+/* =========================================================
+   PHOTO & VIDEO ATTACHMENTS
+   Previously in a separate css/media.css file — merged in here so
+   there is only ONE stylesheet to deploy. If your site still links
+   css/media.css anywhere, remove that <link> tag; everything it
+   contained now lives below.
+   ========================================================= */
+
+[hidden] { display: none !important; }
+
+.composer-box {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 8px;
+}
+
+.composer-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.composer-row textarea { padding: 11px 6px; }
+
+/* Attach buttons — plain emoji glyphs (nothing custom to mis-render)
+   inside a visible outlined circle, sized explicitly so they can
+   never collapse to a sliver regardless of what else is on the page. */
+.attach-btn {
+  box-sizing: border-box;
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  flex: 0 0 38px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  margin: 2px 0;
+  transition: background .15s ease, border-color .15s ease;
+}
+.attach-btn:hover { background: rgba(255,255,255,0.07); border-color: var(--muted); }
+.attach-btn:active { background: rgba(255,255,255,0.12); }
+.attach-btn:disabled { opacity: 0.4; cursor: default; }
+
+.composer-error {
+  padding: 2px 8px 8px;
+  color: #ff9aa4;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.attach-thumb {
+  width: 44px;
+  height: 44px;
+  border-radius: 9px;
+  object-fit: cover;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.attach-info { min-width: 0; flex: 1; }
+
+.attach-name {
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.attach-meta { margin-top: 1px; font-size: 0.72rem; color: var(--muted-2); }
+
+.attach-remove {
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.attach-remove:hover { background: var(--line-strong); color: var(--text); }
+
+.send-btn.busy { font-size: 0; }
+.send-btn.busy::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: media-spin .7s linear infinite;
+}
+.send-btn.busy:disabled { opacity: 0.8; }
+@keyframes media-spin { to { transform: rotate(360deg); } }
+
+/* Message bubbles with media — sized to the media's OWN aspect
+   ratio (capped), never a fixed box, so nothing gets letterboxed,
+   stretched, or (as in the "Cloudflare" screenshot) rendered at its
+   full uncapped natural size taking over the whole screen. */
+.msg.has-media {
+  width: auto !important;
+  max-width: min(78%, 320px) !important;
+  padding: 5px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+}
+
+.msg-media {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #000;
+  line-height: 0;
+  display: inline-block;
+  min-width: 140px;
+  max-width: 100%;
+}
+
+.msg-media video { cursor: pointer; }
+
+/* Centered play icon over a video thumbnail. */
+.media-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.media-play svg { width: 22px; height: 22px; margin-left: 2px; }
+
+.msg-media img,
+.msg-media video {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 360px !important;
+  min-height: 80px;
+  background: #000;
+}
+
+.msg-media img { cursor: zoom-in; }
+
+.msg-media.missing {
+  padding: 24px 12px;
+  background: var(--surface);
+  color: var(--muted-2);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  text-align: center;
+  display: block;
+  min-width: 180px;
+}
+
+.msg.has-media .msg-text { padding: 8px 8px 0; }
+.msg.has-media .time { padding: 0 8px 3px; }
+.msg.has-media .msg-media + .time { margin-top: 5px; }
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,0.92);
+  cursor: zoom-out;
+}
+
+.lightbox img,
+.lightbox video {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 10px;
+  cursor: default;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+@media (max-width: 400px) {
+  .msg.has-media { max-width: min(80vw, 260px) !important; }
+  .attach-btn { width: 34px; height: 34px; min-width: 34px; min-height: 34px; flex-basis: 34px; font-size: 15px; }
 }
