@@ -23,14 +23,24 @@
 
     <div class="composer">
       <div class="composer-box">
-        <textarea id="input" rows="1" placeholder="Write a message…"></textarea>
-        <button class="send-btn" id="sendBtn" type="button" disabled aria-label="Send">➤</button>
+        <div class="composer-error" id="composerError" hidden></div>
+        <div class="attach-preview" id="attachPreview" hidden></div>
+        <div class="composer-row">
+          <button class="attach-btn" id="imageBtn" type="button" aria-label="Attach a photo">📷</button>
+          <input type="file" id="imageInput" accept="image/*" hidden />
+
+          <button class="attach-btn" id="videoBtn" type="button" aria-label="Attach a video">🎥</button>
+          <input type="file" id="videoInput" accept="video/*" hidden />
+
+          <textarea id="input" rows="1" placeholder="Write a message…"></textarea>
+          <button class="send-btn" id="sendBtn" type="button" disabled aria-label="Send">➤</button>
+        </div>
       </div>
     </div>
   </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.1/dist/umd/supabase.min.js"></script>
-<script src="js/app.js"></script>
+<script src="js/app.js?v=5"></script>
   <script>
     const session = requireAuth(false);
     if (session) {
@@ -43,8 +53,6 @@
       const linkSlug = getLinkSlug();
       const ADMIN_ID = 'admin-001';
       const box = document.getElementById('messages');
-      const input = document.getElementById('input');
-      const sendBtn = document.getElementById('sendBtn');
 
       let lastCount = -1;
       let lastId = null;
@@ -60,6 +68,7 @@
 
         const wasNearBottom =
           box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        const stick = force || wasNearBottom;
 
         box.innerHTML = '';
 
@@ -82,44 +91,42 @@
             box.appendChild(div);
             lastDay = day;
           }
-          box.appendChild(createBubble(m.body, formatTime(m.ts), m.senderId === session.id, grouping[idx]));
+          const opts = Object.assign({}, grouping[idx], {
+            attachment: m.attachment,
+            onMediaLoad: function () { if (stick) box.scrollTop = box.scrollHeight; }
+          });
+          box.appendChild(createBubble(m.body, formatTime(m.ts), m.senderId === session.id, opts));
         });
 
-        if (force || wasNearBottom) {
+        if (stick) {
           box.scrollTop = box.scrollHeight;
         }
       }
 
-      async function send() {
-        const body = (input.value || '').trim();
-        if (!body) return;
-
-        sendBtn.disabled = true;
-        await Store.saveMessage(session.id, linkSlug, {
-          id: Date.now(),
-          senderId: session.id,
-          receiverId: ADMIN_ID,
-          body: body,
-          ts: Date.now()
-        });
-
-        input.value = '';
-        input.style.height = 'auto';
-        await render(true);
-      }
-
-      input.addEventListener('input', function () {
-        sendBtn.disabled = !(input.value || '').trim();
-        input.style.height = 'auto';
-        input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-      });
-
-      sendBtn.addEventListener('click', send);
-
-      input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          send();
+      initComposer({
+        input: document.getElementById('input'),
+        sendBtn: document.getElementById('sendBtn'),
+        attachButtons: [
+          { btn: document.getElementById('imageBtn'), input: document.getElementById('imageInput') },
+          { btn: document.getElementById('videoBtn'), input: document.getElementById('videoInput') }
+        ],
+        preview: document.getElementById('attachPreview'),
+        error: document.getElementById('composerError'),
+        onSubmit: async function (draft) {
+          let attachment = null;
+          if (draft.file) {
+            attachment = await Store.uploadAttachment(session.id, linkSlug, draft.file, draft.onProgress);
+          }
+          const ok = await Store.saveMessage(session.id, linkSlug, {
+            id: Date.now(),
+            senderId: session.id,
+            receiverId: ADMIN_ID,
+            body: draft.body,
+            attachment: attachment,
+            ts: Date.now()
+          });
+          if (!ok) throw new Error('Message could not be sent. Please try again.');
+          await render(true);
         }
       });
 
