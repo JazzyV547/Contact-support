@@ -163,7 +163,7 @@
 
       const preview = document.createElement('div');
       preview.className = 'preview';
-      preview.textContent = last ? last.body : 'No messages yet';
+      preview.textContent = last ? messageSummary(last) : 'No messages yet';
       meta.appendChild(preview);
 
       const right = document.createElement('div');
@@ -186,8 +186,7 @@
     }
 
     // A cheap fingerprint of what's currently shown, so a poll that
-    // found nothing new never touches the DOM at all — the single
-    // biggest source of any visible flicker.
+    // found nothing new never touches the DOM at all.
     let lastSignature = null;
 
     function signatureFor(rows) {
@@ -216,13 +215,10 @@
           });
         }
 
-        // Everything async (fetching threads + unread state) happens
-        // here, BEFORE any DOM is touched. The visible list stays
-        // exactly as it was — no flash of empty — while this awaits.
         const rows = await buildRows(users);
 
         const signature = signatureFor(rows);
-        if (signature === lastSignature) return; // nothing changed — skip the render entirely
+        if (signature === lastSignature) return;
         lastSignature = signature;
 
         const unreadCount = rows.filter(function (r) { return r.unread; }).length;
@@ -240,13 +236,9 @@
           return;
         }
 
-        // Build the whole new list in memory first...
         const frag = document.createDocumentFragment();
         rows.forEach(function (row) { frag.appendChild(buildRowEl(row)); });
 
-        // ...then swap it in as one synchronous operation. There is
-        // no async work between clearing and appending, so nothing
-        // is ever visibly empty.
         empty.style.display = 'none';
         list.innerHTML = '';
         list.appendChild(frag);
